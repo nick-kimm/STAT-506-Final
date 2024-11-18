@@ -1,0 +1,15 @@
+---
+title: "506-Final"
+author: "Nick Kim"
+format: html
+---
+
+## What makes a Championship Roster?
+
+```{r}
+library(nflreadr)
+library(nflverse)
+```
+```{r}
+
+```
