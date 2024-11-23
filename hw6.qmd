@@ -4,5 +4,7 @@ author: "Nick Kim"
 format: html
 ---
 
+Link to [github]("https://github.com/nick-kimm/STAT-506-Final-HW6.git")
+
 ## Problem 1
 
