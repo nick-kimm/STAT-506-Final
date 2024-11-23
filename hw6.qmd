@@ -1,0 +1,8 @@
+---
+title: "HW6"
+author: "Nick Kim"
+format: html
+---
+
+## Problem 1
+
