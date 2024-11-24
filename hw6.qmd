@@ -62,44 +62,71 @@ library(dplyr)
 rf %>% group_by(teamID) %>% 
   summarise(avg_rf = mean(RF,na.rm=TRUE))
 ```
+
 ## Non parallel method:
 ```{r}
-nsim <- 1000
-teams <- unique(rf$teamID)
-strat <- list()
-
 set.seed(1234)
 
-for (i in 1:nsim){
+boot <- function(data, n_sim = 1000){
+  teams <- unique(data$teamID)
+  strat <- list()
   est_theta <- numeric(length(teams)) 
   names(est_theta) <- teams
-  for (t in teams){
-    indexes <- which(rf$teamID==t)
-    boot_index <- sample(indexes,size=nrow(rf[rf$teamID==t,]),replace=TRUE)
-    est_theta[t] <- mean(rf[boot_index,"RF"], na.rm=TRUE)
+  for (i in 1:n_sim){
+    for (t in teams){
+      indexes <- which(data$teamID==t)
+      boot_index <- sample(indexes,size=nrow(data[data$teamID==t,]),replace=TRUE)
+      est_theta[t] <- mean(rf[boot_index,"RF"], na.rm=TRUE)
+    }
+    strat[[i]]<-est_theta
   }
-  strat[[i]]<-est_theta
+  boot_mat<-do.call(rbind,strat)
+  theta_bar <- colMeans(boot_mat)
+  boot_se <- c()
+    
+  for (i in 1:length(teams)){
+    boot_se[i] <- sqrt(sum((boot_mat[,i]-theta_bar[i])^2)/(nsim-1))
+  }
+  return(data.frame(team = teams,
+           standard_error = boot_se))
 }
+
+boot(rf)
 ```
 
 ```{r}
-boot_mat<-do.call(rbind,strat)
-theta_bar <- colMeans(boot_mat)
-boot_se <- c()
+set.seed(1234)
 
-for (i in 1:length(teams)){
-  boot_se[i] <- sqrt(sum((boot_mat[,i]-theta_bar[i])^2)/(nsim-1))
+# Function to calculate average RF for bootstrapped samples
+bootstrap_rf <- function(data, n_bootstrap = 1000) {
+  bootstrapped_sd <- numeric(n_bootstrap)
+  for (i in 1:n_bootstrap) {
+    boot_sample <- do.call(rbind, lapply(split(data, data$teamID), function(group) {
+      group[sample(1:nrow(group), size = nrow(group), replace = TRUE), ]
+    }))
+    avg_rf <- aggregate(RF ~ teamID, data = boot_sample, mean)
+    bootstrapped_sd[i] <- mean(avg_rf$RF) # Mean of RF for each bootstrap iteration
+  }
+  return(sd(bootstrapped_sd)) # Return the standard deviation of the bootstrapped means
 }
 
-data.frame(team = teams,
-           standard_error = boot_se)
+sd_no_parallel <- bootstrap_rf(rf)
+print(sd_no_parallel)
+
 ```
+
 
 ## Parallel method:
 
 ```{r}
 library(parallel)
-t
+
+nsim <- 1000
+
+cl <- makeCluster(4)
+clusterExport(cl, c("rf", "boot"))
+res3 <- parLapply(cl, seq_len(nsim), function(x) boot(df))
+stopCluster(cl)
 ```
 
 
