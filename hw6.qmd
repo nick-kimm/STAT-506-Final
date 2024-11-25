@@ -35,86 +35,55 @@ dbListFields(lahman,"Teams")
 dbListFields(lahman, "Fielding")
 ```
 ```{r}
-gg(lahman,"
-   SELECT teamID, name
-   FROM Teams
-   GROUP BY teamID
-   ")
-
-```
-```{r}
 rf<-gg(lahman,"
-   SELECT t.name, f.teamID, f.playerID, f.PO, f.A, f.InnOuts, 3*((f.PO + f.A)*1.0/f.InnOuts) AS RF
-   FROM Fielding AS f
-    LEFT JOIN (
-      SELECT teamID, name 
-      FROM Teams
-      GROUP BY teamID
-    ) AS t ON t.teamID = f.teamID
-    WHERE f.InnOuts > 0
-    GROUP BY f.playerID
+   SELECT teamID, playerID, PO, A, InnOuts, 3*((PO + A)*1.0/InnOuts) AS RF
+   FROM Fielding 
+   WHERE InnOuts > 0
+   GROUP BY playerID
    ")
 rf
 ```
 ```{r}
 library(dplyr)
 
-rf %>% group_by(teamID) %>% 
+rf  %>% group_by(teamID) %>% 
   summarise(avg_rf = mean(RF,na.rm=TRUE))
 ```
 
-## Non parallel method:
 ```{r}
 set.seed(1234)
 
-boot <- function(data, n_sim = 1000){
-  teams <- unique(data$teamID)
-  strat <- list()
-  est_theta <- numeric(length(teams)) 
-  names(est_theta) <- teams
-  for (i in 1:n_sim){
-    for (t in teams){
-      indexes <- which(data$teamID==t)
-      boot_index <- sample(indexes,size=nrow(data[data$teamID==t,]),replace=TRUE)
-      est_theta[t] <- mean(rf[boot_index,"RF"], na.rm=TRUE)
-    }
-    strat[[i]]<-est_theta
+nsim <- 1000
+
+strat_avg <- list()
+teams <- unique(rf$teamID)
+  
+for (i in 1:nsim) {
+  boot_indexes <- c()
+  for (t in teams) {
+    indexes <- which(rf$teamID == t)
+    boot_indexes <- append(boot_indexes, sample(indexes, size = nrow(rf[rf$teamID == t, ]), replace = TRUE))
   }
-  boot_mat<-do.call(rbind,strat)
-  theta_bar <- colMeans(boot_mat)
-  boot_se <- c()
-    
-  for (i in 1:length(teams)){
-    boot_se[i] <- sqrt(sum((boot_mat[,i]-theta_bar[i])^2)/(nsim-1))
-  }
-  return(data.frame(team = teams,
-           standard_error = boot_se))
+  boot_sample <- rf[boot_indexes, c("teamID", "RF")]
+  strat_avg[[i]] <- aggregate(RF ~ teamID, data = boot_sample, mean)
 }
+  
+boot_mat <- do.call(rbind, lapply(seq_along(strat_avg), function(i) {
+    cbind(strat_avg[[i]], iteration = i)
+  }))
+  
 
-boot(rf)
-```
-
-```{r}
-set.seed(1234)
-
-# Function to calculate average RF for bootstrapped samples
-bootstrap_rf <- function(data, n_bootstrap = 1000) {
-  bootstrapped_sd <- numeric(n_bootstrap)
-  for (i in 1:n_bootstrap) {
-    boot_sample <- do.call(rbind, lapply(split(data, data$teamID), function(group) {
-      group[sample(1:nrow(group), size = nrow(group), replace = TRUE), ]
-    }))
-    avg_rf <- aggregate(RF ~ teamID, data = boot_sample, mean)
-    bootstrapped_sd[i] <- mean(avg_rf$RF) # Mean of RF for each bootstrap iteration
-  }
-  return(sd(bootstrapped_sd)) # Return the standard deviation of the bootstrapped means
-}
-
-sd_no_parallel <- bootstrap_rf(rf)
-print(sd_no_parallel)
+bootstrap_results <- boot_mat %>%
+    group_by(teamID) %>%
+    summarize(
+      avg_RF = mean(RF),                       
+      SE_RF = sd(RF) / sqrt(nsim),            
+      .groups = 'drop'
+    )
+  
+bootstrap_results
 
 ```
-
 
 ## Parallel method:
 
@@ -123,10 +92,39 @@ library(parallel)
 
 nsim <- 1000
 
+set.seed(1234)
+
+strat_boot <- function(iter){
+  boot_indexes <- c()
+  for (t in teams) {
+    indexes <- which(rf$teamID == t)
+    boot_indexes <- append(boot_indexes, sample(indexes, size = nrow(rf[rf$teamID == t, ]), replace = TRUE))
+  }
+  boot_sample <- rf[boot_indexes, c("teamID", "RF")]
+  return(aggregate(RF ~ teamID, data = boot_sample, mean))
+}
+
+
 cl <- makeCluster(4)
-clusterExport(cl, c("rf", "boot"))
-res3 <- parLapply(cl, seq_len(nsim), function(x) boot(df))
+clusterExport(cl, c("rf", "nsim", "teams", "boot"))
+avg_rf <- parLapply(cl, seq_len(nsim), strat_boot)
 stopCluster(cl)
+
+boot_mat <- do.call(rbind, lapply(seq_along(avg_rf), function(i) {
+    cbind(avg_rf[[i]], iteration = i)
+  }))
+  
+
+bootstrap_results_p <- boot_mat %>%
+    group_by(teamID) %>%
+    summarize(
+      avg_RF = mean(RF),                       
+      SE_RF = sd(RF) / sqrt(nsim),            
+      .groups = 'drop'
+    )
+  
+bootstrap_results_p
+
 ```
 
 
