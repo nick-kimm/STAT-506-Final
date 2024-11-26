@@ -98,8 +98,25 @@ for (yr in 2000:2024){
 ```
 ```{r}
 df <- do.call("rbind", all_seasons)
-df[df$season==2024,]
-all_seasons[[25]]
+df$team <-replace(df$team,df$team=="SL", "LA") #renaming SL to LA due to relocation of the franchise to LA in last decade
+df
+```
+```{r}
+contracts[contracts$year_signed==2017,]
+df[df$season==2019,]
 ```
 
+
+
+Process to implement logistic regression
+
+First need dataframe with all previous champions
+```{r}
+champs <- as.data.frame(
+  season = c(2000:2023),
+  champ = c("LA","BAL","NE","TB","NE","NE","PIT","IND","NYG","PIT","NO","GB","NYG","BAL","SEA","NE",
+            "DEN","NE","PHI","NE","KC","TB","LA","KC","KC")
+)
+
+```
 
