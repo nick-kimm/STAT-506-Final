@@ -1,0 +1,399 @@
+---
+title: "HW5"
+author: "Nick Kim"
+format: html
+---
+
+Link to my [github]("www.github.com/nick-kimm/STAT-506") repository 
+
+## Problem 1
+
+Creating a class to represent rational numbers
+
+#part a:
+
+Setting constructor and Validity 
+```{r}
+#' Rational class
+#' 
+#'Defining a class object that'll take in two integer inputs, one for the numerator and one for the denominator. This will be used to return a rational number given the input.
+#'
+#'
+#' @return rational number
+#' 
+setClass("rational",
+          slots = c(numerator = "numeric",
+                    denominator = "numeric")
+)
+
+rational <- function(n, d) {
+  if (d == 0) {
+    stop("Denominator cannot be zero.")
+  }
+  new("rational", numerator = n, denominator = d)
+}
+
+setValidity("rational",
+            function(object){
+              if (object@denominator == 0){
+                return("Denominator can't be zero")
+              }
+              return(TRUE)
+            })
+```
+
+Show method
+```{r}
+setMethod("show","rational",
+          function(object) {
+            cat("Numerator :")
+            str(object@numerator)  
+            cat("\n")
+            cat("Denominator :")
+            str(object@denominator)
+            cat("\n")
+            return(invisible(object))
+})
+```
+
+Simplify method
+```{r}
+#' Greatest Common Divisor
+#'
+#'Will find the greatest common divisor for the given numerator and denominator values in the "rational" object. The function will use the Euclidean method, which is a recursive solution to get the gcd. This algorithm will continiously take the mod of the numbers until the remainder is zero, where a will store the value of previous operation. 
+#'
+#' @param a,b 
+#'
+#' @return integer of the gcd
+#' 
+gcd<-function(a,b){
+  if (b == 0){
+    return(abs(a))
+  }else{
+    return(gcd(b,a%%b))
+    }
+}
+
+#' Simplify
+#'Will reduce the rational down to its simplified form. This will be found by dividing the numerator by the gcd of the numerator and denominator and similarly for the denominator.
+#' @param object 
+#'
+#' @return simplified rational of the input
+#' 
+setGeneric("simplify",
+           function(object){
+             n<-object@numerator/gcd(object@numerator,object@denominator)
+             d<-object@denominator/gcd(object@numerator,object@denominator)
+             return(paste(n,"/",d, sep=""))
+           }
+)
+```
+
+```{r}
+#' Quotient
+#' Will return the quotient of the rational number to a specified digit place. The default digit length will be set at 6.
+#'
+#' @param object 
+#' @param digits 
+#'
+#' @return Quotient of rational to a specified digit place
+#' 
+setGeneric("quotient",
+           function(object, digits=6){
+             if (is.numeric(digits)==FALSE){
+               return("Digit is not a numeric value")
+             }else{
+               q<-object@numerator/object@denominator
+               return(print(q,digits=digits))
+            }
+           })
+```
+
+```{r}
+#' Rational Addition
+#' Will make sure the input are both in the rational class and then return the added value of the two. This will be done by finding the least common multiple and letting that be our denominator. Then we'd multiply the numerator by the lcm divided by the denominator then add the two new numerator values together. Will then reduce the value down to its simplest form
+#'
+#' @param e1 rational. 
+#' @param e2 rational. 
+#'
+#' @return Added value of the two  rational numbers
+setMethod("+", signature(e1 = "rational",
+                         e2 = "rational"),
+          function(e1,e2){
+            lcm <- abs(e1@denominator)*(e2@denominator/gcd(e1@denominator,e2@denominator))
+            new_numerator <- (lcm/e1@denominator)*e1@numerator + (lcm/e2@denominator)*e2@numerator
+            new_denominator <- lcm
+            newnum <- rational(new_numerator,new_denominator)
+            return(simplify(newnum))
+          })
+
+#'Rational Subtraction 
+#'Will make sure the input are both in the rational class and then return the subtracted value of the two. This will be done by finding the least common multiple and letting that be our denominator. Then we'd multiply the numerator by the lcm divided by the denominator of then subtract the two new numerator values together. Will then reduce the value down to its simplest form
+#'
+#' @param e1 rational. 
+#' @param e2 rational. 
+#'
+#' @return Subtracted value of the two rational numbers
+setMethod("-", signature(e1 = "rational",
+                         e2 = "rational"),
+          function(e1,e2){
+            lcm <- abs(e1@denominator)*(e2@denominator/gcd(e1@denominator,e2@denominator))
+            new_numerator <- (lcm/e1@denominator)*e1@numerator - (lcm/e2@denominator)*e2@numerator
+            new_denominator <- lcm
+            newnum <- rational(new_numerator,new_denominator)
+            return(simplify(newnum))
+          })
+
+#' Rational Multiplication
+#' Will make sure the input are both in the rational class and then return the multiplied value of the two. This will be done by calling a new rational where the numerator is the multiplied value of the numerators and the denominator is found in the same fashion. Will then reduce the value down to its simplest form
+#'
+#' @param e1 rational. 
+#' @param e2 rational. 
+#'
+#' @return Multiplied rational of two rationals
+setMethod("*", signature(e1 = "rational",
+                         e2 = "rational"),
+          function(e1,e2){
+            newnum <- rational(e1@numerator * e2@numerator, e1@denominator * e2@denominator)
+            return(simplify(newnum))
+          })
+
+#' Rational Division
+#' Will make sure the input are both in the rational class and then return the divided value of the two. Since division of rationals is just multiplication of the reciprocal of one of the rationals the value will be found by multipliying the numerator of one with denominator of the other and vice versa. Will then reduce the value down to its simplest form
+#'
+#' @param e1 rational. 
+#' @param e2 rational. 
+#'
+#' @return Divided rational of the two
+setMethod("/", signature(e1 = "rational",
+                         e2 = "rational"),
+          function(e1,e2){
+            newnum <- rational(e1@numerator * e2@denominator, e1@denominator * e2@numerator)
+            return(simplify(newnum))
+          })
+```
+
+
+#part b:
+
+Setting up class objects
+```{r}
+r1 <- rational(24,6)
+r2 <- rational(7,230)
+r3 <- rational(0,4)
+```
+
+```{r}
+abs(r1@denominator)*(r2@denominator/gcd(r1@denominator,r2@denominator))
+```
+
+Checking code in hw
+```{r,error=TRUE}
+r1
+r3
+r1 + r2
+r1 - r2
+r1 * r2
+r1 / r2
+r1 + r3
+r1 * r3
+r2 / r3
+quotient(r1)
+quotient(r2)
+quotient(r2, digits = 3)
+quotient(r2, digits = 3.14)
+quotient(r2, digits = "avocado")
+q2 <- quotient(r2, digits = 3)
+q2
+quotient(r3)
+simplify(r1)
+simplify(r2)
+simplify(r3)
+```
+
+#part c:
+
+Checking if validator works, not allowing denominator to be zero and other edge cases
+
+```{r,error=TRUE}
+rational(40,0)
+rational("t","s")
+```
+
+##Problem 2
+
+```{r}
+library(plotly)
+
+art <- read.csv("/Users/nicholaskim/Documents/STAT 506/HW4/df_for_ml_improved_new_market.csv")
+```
+
+#part a:
+Does the distribution of genre of sales change over the years?
+
+First creating a singly column vector that'll store the genre information rather than split amoungst 5. Will also manually assign artworks that overlap in both painting and other to be assigned to only painting.
+```{r}
+art$Genre___Others[art$Genre___Painting == 1] <- 0
+art$genre <- "Photography"
+art$genre[art$Genre___Print == 1] <- "Print"
+art$genre[art$Genre___Sculpture == 1] <- "Sculpture"
+art$genre[art$Genre___Painting == 1] <- "Painting"
+art$genre[art$Genre___Others == 1] <- "Other"
+table(art$genre)
+```
+
+
+```{r}
+yeargenre <- with(art, table(year, genre))
+prop_art <- yeargenre/apply(yeargenre,1,sum)
+prop_art <- prop_art[, c("Painting", "Sculpture", "Photography", "Print", "Other")]
+
+plot_ly(x=~year, y=~Freq*100, color=~genre,data=data.frame(prop_art),type="bar")|>
+  layout(yaxis = list(title = 'Percentage (%)'),barmode = "stack") 
+```
+
+From the plot above there seems to be a decrease in the proportion of paintings with a rise in photography and print.  
+
+#part b:
+Is there a change in the sales price in USD over time?
+How does the genre affect the change in sales price over time?
+
+```{r}
+save <- list()
+index = 1
+for (i in 1997:2012){
+  price_yr <- art[art$year==i,"price_usd"]
+  save[[index]] <- data.frame(year = i,
+                               price = price_yr[price_yr > quantile(price_yr,.95)])
+  index = index + 1
+}
+
+top_price <- do.call(rbind, save)
+
+artmedian <- aggregate(art$price_usd, by = list(art$year),
+                       FUN = median, na.rm = TRUE)
+names(artmedian) <- c("year", "price")
+
+overall<-plot_ly(data = top_price, x = ~year, y = ~price, type = "box",
+        name = "Boxplot") |>
+  add_lines(data = artmedian, x = ~year, y = ~price, name = "Median",
+            hovertemplate = paste(
+              '<b>Year</b>: %{x}<br>',
+              '<b>Median Price</b>: $%{y:.2f}<br>',
+              '<extra></extra>'
+            )) |>
+  layout(
+    title = "Top 5% of Sales Price of Art over the Years",
+    xaxis = list(title = "Year"),
+    yaxis = list(title = "Price (USD)")
+  )
+overall
+```
+
+```{r}
+library(dplyr)
+artmedian <- aggregate(art$price_usd, by = list(art$year, art$genre),
+                   FUN = median, na.rm = TRUE)
+names(artmedian) <- c("year", "genre", "price")
+art975 <- aggregate(art$price_usd, by = list(art$year, art$genre),
+                   FUN = quantile, .975, na.rm = TRUE)
+names(art975) <- c("year", "genre", "price")
+
+artmedian$genre <- factor(artmedian$genre, levels = rev(unique(artmedian$genre)))
+art975$genre <- factor(art975$genre, levels = rev(unique(art975$genre)))
+artcombine <- bind_rows(
+  artmedian %>% mutate(measure = "Median"),
+  art975 %>% mutate(measure = "97.5%")
+)
+
+bygenre<-plot_ly(x=~year,y=~price,data = artcombine,color=~genre,type="scatter",mode="lines",linetype = ~measure,
+        hovertemplate = paste(
+              '<b>Year</b>: %{x}<br>',
+              '<b>Price</b>: $%{y}<br>'))|>
+  layout(title="Change in Art Price over the Years by Genre",
+         yaxis=list(title="Price (USD)"),
+         xaxis=list(title="Year"))
+bygenre
+```
+
+```{r}
+combined_graph <- plot_ly() |>
+  add_trace(data = top_price, x = ~year, y = ~price, type = "box",name = "Boxplot",visible = TRUE) |>
+  add_trace(x=~year,y=~price,data = artcombine,color=~genre,type="scatter",mode="lines",linetype = ~measure, visible = FALSE)
+
+combined_graph|>layout(
+  xaxis = list(title = "Year"),
+  yaxis = list(title = "Price (USD)"),
+  updatemenus = list(
+  list(
+    y = 1,
+    buttons = list(
+      list(method = "update",
+           args = list(list(visible =  list(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)),
+                       list(title = list(title = "Top 5% of Sales Price of Art over the Years"))),
+           label = "overall"),
+
+      list(method = "update",
+           args = list(list(visible =  list(FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)),
+                       list(title = list(title = "Change in Art Price over the Years by Genre"))),
+           label = "genre"))
+  )
+))
+
+```
+  
+  
+##Problem 3
+
+```{r}
+library(data.table)
+library(nycflights13)
+```
+
+#part a:
+```{r}
+flights <- as.data.table(nycflights13::flights)
+airports <- as.data.table(nycflights13::airports)
+```
+
+Departures
+```{r}
+depart<-flights[,.(med_dep = median(dep_delay,na.rm=TRUE),
+           mean_dep = mean(dep_delay,na.rm=TRUE),
+           count = .N), by=origin]|>
+  _[count>10,]
+
+colnames(depart)[1] <- "faa"
+merge(x=depart, airports[,1:2], by = "faa", all.x = TRUE)|>
+  _[order(depart$mean_dep, decreasing = TRUE),c(5,2:4)]
+```
+
+Arrivals
+```{r}
+arrival<-flights[,.(med_dep = median(arr_delay,na.rm=TRUE),
+           mean_dep = mean(arr_delay,na.rm=TRUE),
+           count = .N), by=dest]|>
+  _[count>10,]
+
+colnames(arrival)[1] <- "faa"
+merge(x=arrival, airports[,1:2], by = "faa", all.x = TRUE)|>
+  _[order(mean_dep, decreasing = TRUE),c(5,2:4)]
+```
+
+#part b:
+How many flights did the aircraft model with the fastest average speed take? 
+
+```{r}
+planes <- as.data.table(nycflights13::planes[,c(1,5)])
+
+combined<-merge(x=flights, y=planes, by = "tailnum",all.y=TRUE)
+combined[!is.na(air_time),.(mph = distance/(air_time/60)), by = model]|>
+  _[,.(avg_mph = mean(mph,na.rm=TRUE),
+       count = .N),by = model]|>
+  _[order(avg_mph, decreasing = TRUE)]|>_[1,]
+
+```
+
+
+
+

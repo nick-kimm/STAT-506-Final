@@ -1,0 +1,108 @@
+---
+title: "HW6"
+author: "Nick Kim"
+format: html
+---
+
+Link to [github]("https://github.com/nick-kimm/STAT-506-Final-HW6.git")
+
+## Problem 1
+
+```{r}
+library(DBI)     # For interfacing with a database
+
+# Import the SQLite database of the Lahman data
+lahman <- dbConnect(RSQLite::SQLite(), "/Users/nicholaskim/Documents/STAT 506/HW6/lahman_1871-2022.sqlite")
+lahman
+```
+
+Helper function
+```{r}
+#' db function
+#'This function will shorten the function name we will call when using dbConnect for ease of use for the user
+#' @param connection 
+#' @param query 
+#'
+#' @return output from dbConnect function
+gg <- function(connection,query){
+  dbGetQuery(connection,query)
+}
+```
+
+## part a:
+```{r}
+dbListFields(lahman,"Teams")
+dbListFields(lahman, "Fielding")
+```
+```{r}
+gg(lahman,"
+   SELECT teamID, name
+   FROM Teams
+   GROUP BY teamID
+   ")
+
+```
+```{r}
+rf<-gg(lahman,"
+   SELECT t.name, f.teamID, f.playerID, f.PO, f.A, f.InnOuts, 3*((f.PO + f.A)*1.0/f.InnOuts) AS RF
+   FROM Fielding AS f
+    LEFT JOIN (
+      SELECT teamID, name 
+      FROM Teams
+      GROUP BY teamID
+    ) AS t ON t.teamID = f.teamID
+    WHERE f.InnOuts > 0
+    GROUP BY f.playerID
+   ")
+rf
+```
+```{r}
+library(dplyr)
+
+rf %>% group_by(teamID) %>% 
+  summarise(avg_rf = mean(RF,na.rm=TRUE))
+```
+## Non parallel method:
+```{r}
+nsim <- 1000
+teams <- unique(rf$teamID)
+strat <- list()
+
+set.seed(1234)
+
+for (i in 1:nsim){
+  est_theta <- numeric(length(teams)) 
+  names(est_theta) <- teams
+  for (t in teams){
+    indexes <- which(rf$teamID==t)
+    boot_index <- sample(indexes,size=nrow(rf[rf$teamID==t,]),replace=TRUE)
+    est_theta[t] <- mean(rf[boot_index,"RF"], na.rm=TRUE)
+  }
+  strat[[i]]<-est_theta
+}
+```
+
+```{r}
+boot_mat<-do.call(rbind,strat)
+theta_bar <- colMeans(boot_mat)
+boot_se <- c()
+
+for (i in 1:length(teams)){
+  boot_se[i] <- sqrt(sum((boot_mat[,i]-theta_bar[i])^2)/(nsim-1))
+}
+
+data.frame(team = teams,
+           standard_error = boot_se)
+```
+
+## Parallel method:
+
+```{r}
+library(parallel)
+t
+
+
+```
+
+
+
