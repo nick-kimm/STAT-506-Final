@@ -30,6 +30,11 @@ gg <- function(connection,query){
 ```
 
 ## part a:
+
+Find standard errors using stratified bootstrapping with 3 different approaches: 
+1. Non parallel
+2. Parallel
+3. Futures
 ```{r}
 dbListFields(lahman,"Teams")
 dbListFields(lahman, "Fielding")
@@ -45,9 +50,6 @@ rf
 ```
 ```{r}
 library(dplyr)
-
-rf  %>% group_by(teamID) %>% 
-  summarise(avg_rf = mean(RF,na.rm=TRUE))
 ```
 
 ```{r}
@@ -94,6 +96,14 @@ nsim <- 1000
 
 set.seed(1234)
 
+#' Stratified Bootstrapping
+#' 
+#'Will perform a stratified bootstrap by teamID every time it is called. It'll do so by sampling with replacement the indexes where a teamID is present in the original dataframe (rf) and combining those to form a new dataframe to run analysis on. The function will go one step further and calculate the average RF (Range Factor) for each team in this new dataframe
+#'
+#' @param iter 
+#'
+#' @return table with the avgerages of RF for each team
+#' 
 strat_boot <- function(iter){
   boot_indexes <- c()
   for (t in teams) {
@@ -106,7 +116,7 @@ strat_boot <- function(iter){
 
 
 cl <- makeCluster(4)
-clusterExport(cl, c("rf", "nsim", "teams", "boot"))
+clusterExport(cl, c("rf", "nsim", "teams", "strat_boot"))
 avg_rf <- parLapply(cl, seq_len(nsim), strat_boot)
 stopCluster(cl)
 
@@ -127,5 +137,89 @@ bootstrap_results_p
 
 ```
 
+## Futures method:
+
+```{r}
+library(future)
+library(future.apply)
+
+plan(multisession)
+
+set.seed(1234)
+
+save <- future_lapply(1:nsim, strat_boot,future.seed=TRUE)
+
+boot_mat_f <- do.call(rbind, lapply(seq_along(save), function(i) {
+    cbind(save[[i]], iteration = i)
+  }))
+  
+
+bootstrap_results_f <- boot_mat_f %>% 
+    group_by(teamID) %>%
+    summarize(
+      avg_RF = mean(RF),                       
+      SE_RF = sd(RF) / sqrt(nsim),            
+      .groups = 'drop'
+    ) %>% 
+  filter(SE_RF != "NA")
+  
+bootstrap_results_f
+
+```
+
+## part b:
+Generate a table showing the estimated RF and associated standard errors from the three approaches.
+
+```{r}
+se_table<-merge(bootstrap_results[,c("teamID","SE_RF")],bootstrap_results_p[,c("teamID","SE_RF")],by="teamID")|>
+  merge(x=_,bootstrap_results_f[,c("teamID","SE_RF")],by="teamID")
+
+names(se_table) <- c("teamID","SE Non Parallel","SE Parallel","SE Futures")
+
+se_table
+```
+
+## part c:
+Report and discuss the performance difference between the versions.
+
+Will time for each approach:
+```{r}
+non_parallel<-system.time({
+  strat_avg <- list()
+  teams <- unique(rf$teamID)
+    
+  for (i in 1:nsim) {
+    boot_indexes <- c()
+    for (t in teams) {
+      indexes <- which(rf$teamID == t)
+      boot_indexes <- append(boot_indexes, sample(indexes, size = nrow(rf[rf$teamID == t, ]), replace = TRUE))
+    }
+    boot_sample <- rf[boot_indexes, c("teamID", "RF")]
+    strat_avg[[i]] <- aggregate(RF ~ teamID, data = boot_sample, mean)
+  }
+})
+
+```
+
+```{r}
+parallel<-system.time({
+  cl <- makeCluster(4)
+  clusterExport(cl, c("rf", "nsim", "teams", "strat_boot"))
+  avg_rf <- parLapply(cl, seq_len(nsim), strat_boot)
+  stopCluster(cl)
+})
+```
+
+```{r}
+futures<-system.time({
+  plan(multisession)
+  save <- future_lapply(1:nsim, strat_boot,future.seed=TRUE)
+})
+```
+
+```{r}
+rbind(non_parallel,parallel,futures)
+```
+From the output we can see that the parallel and futures option is much faster than the non parallel method. Specifically, bringing close to a 4 times speed boost with these options. It it interesting to note how even with less cores used in the parallel version than in futures it actually performed faster.  
 
 
