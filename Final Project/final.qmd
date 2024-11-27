@@ -108,7 +108,14 @@ champs <- data.frame(
 )
 ```
 
-We'll be running our analysis from 2012 onward as years prior there isn't enough data to
+adding binary var of champ to dataset
+```{r}
+df <- merge(df, champs, by = "season", all.x = TRUE)
+
+df$is_champ <- ifelse(df$team==df$champ,1,0)
+
+df
+```
 
 ```{r}
 unique(df$team)
@@ -134,6 +141,11 @@ for (yr in 2000:2024){
 }
 ```
 
+```{r}
+df_fil <- df[df$season>=2009,]
+
+glm(is_champ ~ as.factor(team)*apy_cap_pct, data = df_fil, family = "binomial")
+```
 
 
 
