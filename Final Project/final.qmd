@@ -32,18 +32,10 @@ cur_season[cur_season$status=="RES"|cur_season$status=="ACT",]|>
 test<-contracts[contracts$gsis_id == "00-0023459" & !is.na(contracts$gsis_id), c(1,3,5:6,10)]
 test
 ```
-```{r}
-b<-test[
-  test$year_signed <= 2021 &  # Contract signed before or in the target year
-  (test$year_signed + test$years - 1) >= 2021,  # Contract still valid in the target year
-]
-b
-b[b$year_signed==max(b$year_signed),]
-```
 
 ```{r}
 library(dplyr)
-target_yr = 2024
+target_yr = 2017
 fil<-contracts[
   contracts$year_signed <= target_yr & 
     (contracts$years + contracts$year_signed - 1)>= target_yr,
@@ -51,12 +43,12 @@ fil<-contracts[
 
 fil<-fil %>% 
   group_by(gsis_id) %>% 
-  filter(year_signed == max(year_signed) & is_active == TRUE) %>% 
-  ungroup()
+  filter(year_signed == max(year_signed)) %>% slice_tail(n=1)
+
+#took last row as from looking at how OTC formats data in goes sequentially where last row is latest
 
 fil
 ```
-
 ```{r}
 test<-cur_season[cur_season$status=="RES"|cur_season$status=="ACT",]|>
   merge(x=_,fil[,c(10,16)],by="gsis_id")|>
@@ -64,22 +56,21 @@ test<-cur_season[cur_season$status=="RES"|cur_season$status=="ACT",]|>
 
 test
 ```
-```{r}
-fil[fil$gsis_id == "00-0036195"|fil$gsis_id =="00-0035961"|fil$gsis_id =="00-0036695"|fil$gsis_id =="00-0038567" & !is.na(fil$gsis_id), ]
-test[test$team == "ARI",]
-```
+
 Now need to implement a function to create this dataset for all seasons I want to test
 ```{r}
 cappy <- function(year){
   season<-as.data.frame(nflreadr::load_rosters(year))
   
   fil<-contracts[
-  contracts$year_signed <= target_yr & 
-    (contracts$years + contracts$year_signed - 1)>= target_yr,
+  contracts$year_signed <= year & 
+    (contracts$years + contracts$year_signed - 1)>= year,
   ] %>% 
     group_by(gsis_id) %>% 
-    filter(year_signed == max(year_signed) & is_active == TRUE) %>% 
-    ungroup()
+    filter(year_signed == max(year_signed)) %>% 
+    slice_tail(n=1)
+  
+
   
   cap_season<-season[season$status=="RES"|season$status=="ACT",] %>% 
     merge(fil[,c("apy_cap_pct","gsis_id")],by="gsis_id") %>% 
@@ -99,24 +90,56 @@ for (yr in 2000:2024){
 ```{r}
 df <- do.call("rbind", all_seasons)
 df$team <-replace(df$team,df$team=="SL", "LA") #renaming SL to LA due to relocation of the franchise to LA in last decade
-df
+
 ```
 ```{r}
-contracts[contracts$year_signed==2017,]
-df[df$season==2019,]
+all_seasons[[18]][all_seasons[[18]]$full_name=="Matthew Stafford",]
 ```
-
 
 
 Process to implement logistic regression
 
 First need dataframe with all previous champions
 ```{r}
-champs <- as.data.frame(
+champs <- data.frame(
   season = c(2000:2023),
-  champ = c("LA","BAL","NE","TB","NE","NE","PIT","IND","NYG","PIT","NO","GB","NYG","BAL","SEA","NE",
+  champ = c("BAL","NE","TB","NE","NE","PIT","IND","NYG","PIT","NO","GB","NYG","BAL","SEA","NE",
             "DEN","NE","PHI","NE","KC","TB","LA","KC","KC")
 )
-
 ```
+
+We'll be running our analysis from 2012 onward as years prior there isn't enough data to
+
+```{r}
+unique(df$team)
+length(unique(df$team))
+```
+
+Need to rename ARZ to ARI, SD to LAC, OAK to LV, HST to HOU, BLT to BAL, STL to LA, CLE to CLV
+
+```{r}
+team_rename <- c("ARZ" = "ARI", "SD" = "LAC", "OAK" = "LV", "HST" = "HOU", "BLT" = "BAL", "STL" = "LA", "CLE" = "CLV")
+
+df$team <- ifelse(!is.na(match(df$team, names(team_rename))), team_rename[df$team], df$team)
+
+unique(df$team)
+length(unique(df$team))
+```
+
+Looking to see what year to run analysis on. There are 11 starting positions, and 53 total roster spots.
+```{r}
+for (yr in 2000:2024){
+  print(yr)
+  print(table(df[df$season==yr,"team"]))
+}
+```
+
+
+
+
+
+
+
+
+
 
