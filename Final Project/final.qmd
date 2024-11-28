@@ -144,13 +144,139 @@ for (yr in 2000:2024){
 ```{r}
 df_fil <- df[df$season>=2009,]
 
-glm(is_champ ~ as.factor(team)*apy_cap_pct, data = df_fil, family = "binomial")
+df_pos<-df_fil %>% group_by(season, team, position) %>% 
+  summarise(cap_by_pos = sum(apy_cap_pct),.groups = "drop") %>% ungroup() %>% 
+  group_by(season, team) %>% 
+  mutate(total_cap = sum(cap_by_pos),
+         prop_pos_cap = cap_by_pos/total_cap)
+
+unique(df$position)
+df_pos[df_pos$position=="SPEC",]
+df_pos
+```
+
+```{r}
+team_dat <- df_pos %>%
+  group_by(season, team) %>%
+  summarize(
+    qb_cap_pct = sum(cap_by_pos[position == "QB"], na.rm = TRUE),
+    rb_cap_pct = sum(cap_by_pos[position == "RB"], na.rm = TRUE),
+    wr_cap_pct = sum(cap_by_pos[position == "WR"], na.rm = TRUE),
+    te_cap_pct = sum(cap_by_pos[position == "TE"], na.rm = TRUE),
+    ol_cap_pct = sum(cap_by_pos[(position == "OL"|position == "C"|position == "G"|position == "T")], na.rm = TRUE),
+    lb_cap_pct = sum(cap_by_pos[(position == "LB"|position == "ILB"|position == "OLB"|position == "MLB")], na.rm = TRUE),
+    dl_cap_pct = sum(cap_by_pos[(position == "DL"|position == "DE"|position == "DT"|position == "NT")],na.rm=TRUE),
+    db_cap_pct = sum(cap_by_pos[position == "DB"], na.rm = TRUE),
+    s_cap_pct = sum(cap_by_pos[(position == "FS"|position == "SS"|position == "S")]),
+    spec_cap_pct = sum(cap_by_pos[(position == "K"|position =="P"|position == "KR"|position == "LS")]),
+    
+    total_cap_pct = sum(cap_by_pos, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(champs, by = "season") %>%
+  mutate(is_champion = ifelse(team == champ, 1, 0))
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(df_pos,aes(x=team,fill=position))+
+  geom_histogram(position = "fill")
 ```
 
 
+splitting into train and test
+```{r}
+pred_24 <- team_dat[team_dat$season==2024,]
 
 
+smp_size <- floor(0.75 * nrow(team_dat[team_dat$season<2024,]))
 
+set.seed(123)
+train_ind <- sample(seq_len(nrow(team_dat[team_dat$season<2024,])), size = smp_size)
+
+train <- team_dat[train_ind,]
+test <- team_dat[-train_ind,]
+
+model <- glm(is_champion ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct + s_cap_pct + spec_cap_pct + total_cap_pct, 
+             data = train, 
+             family = "binomial")
+summary(model)
+```
+```{r}
+pred<-predict(model,newdata=test,type="response")
+pred_champ<-ifelse(pred>0.5,1,0)
+library(caret)
+confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
+```
+See that class imbalance might have an effect on model. Will account for this by adding class weights
+```{r}
+class_weights <- ifelse(train$is_champion==1,
+                        1/sum(train$is_champion==1,na.rm=TRUE),
+                        1/sum(train$is_champion==0,na.rm=TRUE))
+
+model_w <- glm(is_champion ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct + s_cap_pct + spec_cap_pct + total_cap_pct, 
+             data = train, 
+             family = "binomial",
+             weights = class_weights)
+
+summary(model_w)
+```
+
+```{r}
+pred<-predict(model_w,newdata=test,type="response")
+pred_champ<-ifelse(pred>0.5,1,0)
+confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
+```
+
+```{r}
+library(pROC)
+roc_curve <- roc(test$is_champion, pred_champ)
+plot(roc_curve)
+auc(roc_curve)
+```
+Trying different models
+```{r}
+library(randomForest)
+
+rf_model <- randomForest(as.factor(is_champion) ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct + s_cap_pct + spec_cap_pct ,
+                         data = train,
+                         classwt = c("0" = 1, "1" = 5),
+                         na.action=na.exclude)  
+
+pred_r<-predict(model_w,newdata=test,type="response")
+pred_champ_r<-ifelse(pred_r>0.5,1,0)
+confusionMatrix(as.factor(pred_champ_r), as.factor(test$is_champion))
+
+```
+
+xgboost
+```{r}
+library(xgboost)
+
+# Prepare data for xgboost
+x <- as.matrix(train[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")])
+y <- train$is_champion
+
+# Fit an XGBoost model with scale_pos_weight
+xgb_model <- xgboost(data = x, label = y, objective = "binary:logistic", scale_pos_weight = 5, nrounds = 100)
+```
+```{r}
+test_x <- as.matrix(test[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")])
+
+pred_xg<-predict(xgb_model,newdata=test_x,type="response")
+pred_champ_xg<-ifelse(pred_xg>0.5,1,0)
+confusionMatrix(as.factor(pred_champ_xg), as.factor(test$is_champion))
+```
+
+Predicting the 2024 NFL Champion
+```{r}
+pred_24_xgb <- as.matrix(pred_24[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")])
+pred<-predict(xgb_model,newdata=pred_24_xgb,type="response")
+order(pred, decreasing = TRUE)
+pred_24[order(pred, decreasing = TRUE),]
+```
 
 
 
