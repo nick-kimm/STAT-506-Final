@@ -36,17 +36,13 @@ Find standard errors using stratified bootstrapping with 3 different approaches:
 2. Parallel
 3. Futures
 ```{r}
-dbListFields(lahman,"Teams")
-dbListFields(lahman, "Fielding")
-```
-```{r}
 rf<-gg(lahman,"
    SELECT teamID, playerID, PO, A, InnOuts, 3*((PO + A)*1.0/InnOuts) AS RF
    FROM Fielding 
    WHERE InnOuts > 0
    GROUP BY playerID
    ")
-rf
+head(rf)
 ```
 ```{r}
 library(dplyr)
@@ -83,7 +79,7 @@ bootstrap_results <- boot_mat %>%
       .groups = 'drop'
     )
   
-bootstrap_results
+bootstrap_results[order(bootstrap_results$avg_RF,decreasing = TRUE),][1:10,]
 
 ```
 
@@ -133,7 +129,7 @@ bootstrap_results_p <- boot_mat %>%
       .groups = 'drop'
     )
   
-bootstrap_results_p
+bootstrap_results_p[order(bootstrap_results_p$avg_RF,decreasing = TRUE),][1:10,]
 
 ```
 
@@ -163,7 +159,7 @@ bootstrap_results_f <- boot_mat_f %>%
     ) %>% 
   filter(SE_RF != "NA")
   
-bootstrap_results_f
+bootstrap_results_f[order(bootstrap_results_f$avg_RF,decreasing = TRUE),][1:10,]
 
 ```
 
@@ -171,13 +167,16 @@ bootstrap_results_f
 Generate a table showing the estimated RF and associated standard errors from the three approaches.
 
 ```{r}
-se_table<-merge(bootstrap_results[,c("teamID","SE_RF")],bootstrap_results_p[,c("teamID","SE_RF")],by="teamID")|>
-  merge(x=_,bootstrap_results_f[,c("teamID","SE_RF")],by="teamID")
+bootstrap_results$method <- "Non Parallel"
+bootstrap_results_p$method <- "Parallel"
+bootstrap_results_f$method <- "Futures"
 
-names(se_table) <- c("teamID","SE Non Parallel","SE Parallel","SE Futures")
+results<-rbind(bootstrap_results,bootstrap_results_p)|>
+  rbind(x=_,bootstrap_results_f)
 
-se_table
+results[order(results$avg_RF,decreasing = TRUE),][1:10,]
 ```
+
 
 ## part c:
 Report and discuss the performance difference between the versions.
