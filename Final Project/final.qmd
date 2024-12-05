@@ -35,15 +35,24 @@ test
 
 ```{r}
 library(dplyr)
-target_yr = 2017
+target_yr = 2024
 fil<-contracts[
   contracts$year_signed <= target_yr & 
     (contracts$years + contracts$year_signed - 1)>= target_yr,
 ]
+fil[order(fil$gsis_id),]
+```
 
+```{r}
+fil %>% 
+  group_by(gsis_id) %>%
+  filter(year_signed == max(year_signed))
+```
+
+```{r}
 fil<-fil %>% 
   group_by(gsis_id) %>% 
-  filter(year_signed == max(year_signed)) %>% slice_tail(n=1)
+  slice_tail(n=1)
 
 #took last row as from looking at how OTC formats data in goes sequentially where last row is latest
 
@@ -181,6 +190,19 @@ team_dat <- df_pos %>%
 team_dat[team_dat$is_champion==1,]
 ```
 
+Plotting distribution of is_champ for all variables
+```{r}
+library(ggplot2)
+bf_24 <- team_dat[team_dat$season < 2024,]
+
+variables <- c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")
+
+for (v in variables){
+  print(ggplot(bf_24,aes(x=.data[[v]],y=is_champion,color=is_champion))+geom_point())
+}
+```
+
+Plotting all interactions
 ```{r}
 library(ggplot2)
 
@@ -196,28 +218,28 @@ for (i in variables){
 }
 ```
 
+
 splitting into train and test
 ```{r}
 pred_24 <- team_dat[team_dat$season==2024,]
 
+dat_bf <- team_dat[team_dat$season < 2024,]
 
-smp_size <- floor(0.75 * nrow(team_dat[team_dat$season<2024,]))
-
-full_train <- team_dat[team_dat$season < 2024,]
+smp_size <- floor(0.75 * nrow(dat_bf))
 
 set.seed(123)
-train_ind <- sample(seq_len(nrow(team_dat[team_dat$season<2024,])), size = smp_size)
+train_ind <- sample(seq_len(nrow(dat_bf)), size = smp_size)
 
-train <- team_dat[train_ind,]
-test <- team_dat[-train_ind,]
+train <- dat_bf[train_ind,]
+test <- dat_bf[-train_ind,]
 
-y_train <- team_dat[train_ind,15]
-y_test <- team_dat[-train_ind,15]
+y_train <- dat_bf[train_ind,15]
+y_test <- dat_bf[-train_ind,15]
 
-x_train <- team_dat[train_ind,-1]
-x_test <- team_dat[-train_ind,-1]
+x_train <- dat_bf[train_ind,3:13]
+x_test <- dat_bf[-train_ind,3:13]
 
-model <- glm(is_champion ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct + s_cap_pct + spec_cap_pct, 
+model <- glm(is_champion ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct + s_cap_pct + spec_cap_pct + total_cap_pct, 
              data = train, 
              family = "binomial")
 summary(model)
@@ -230,19 +252,22 @@ confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
 ```
 ```{r}
 pred<-predict(model,newdata=pred_24,type="response")
-order(pred, decreasing = TRUE)
 pred_24[order(pred, decreasing = TRUE),]
+pred_24[pred>0.5,]
 ```
 ```{r}
 library(car)
 
-vif(model)
+VIF <- vif(model)
+as.data.frame(VIF)
 
-cor_matrix<-cor(team_dat[team_dat$season<2024,c("qb_cap_pct","rb_cap_pct","wr_cap_pct","te_cap_pct","ol_cap_pct","lb_cap_pct","db_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct")])
+cor_matrix<-cor(bf_24[,c("qb_cap_pct","rb_cap_pct","wr_cap_pct","te_cap_pct","ol_cap_pct","lb_cap_pct","db_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct")])
+
+table(bf_24$is_champion)
 ```
 ```{r}
 model2 <- glm(is_champion ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct, 
-             data = train, 
+             data = train[3:15], 
              family = "binomial")
 summary(model2)
 ```
@@ -253,9 +278,9 @@ library(caret)
 confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
 ```
 ```{r}
-pred<-predict(model2,newdata=pred_24,type="response")
-order(pred, decreasing = TRUE)
-pred_24[order(pred, decreasing = TRUE),]
+pred_log<-predict(model2,newdata=pred_24,type="response")
+champ_log<-pred_24[order(pred_log, decreasing = TRUE),]
+pred_24[which(pred>0.5),]
 ```
 
 
@@ -274,14 +299,15 @@ summary(model_w)
 ```
 
 ```{r}
+threshold <- 0.9
 pred<-predict(model_w,newdata=test,type="response")
-pred_champ<-ifelse(pred>0.9,1,0)
+pred_champ<-ifelse(pred>threshold,1,0)
 confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
 ```
 ```{r}
-pred<-predict(model_w,newdata=pred_24,type="response")
-order(pred, decreasing = TRUE)
-pred_24[order(pred, decreasing = TRUE),]
+pred_w<-predict(model_w,newdata=pred_24,type="response")
+champ_w<-pred_24[order(pred_w, decreasing = TRUE),]
+pred_24[which(pred_w>threshold),]
 ```
 
 ```{r}
@@ -325,6 +351,7 @@ pred<-predict(ridge.train,newx=pred_24_rid, s = "lambda.min")
 order(pred, decreasing = TRUE)
 pred_24[order(pred, decreasing = TRUE),]
 ```
+
 LASSO
 ```{r}
 library(glmnet)
@@ -349,7 +376,7 @@ predict.lasso <- predict(ridge.train, newx = as.matrix(test[,c("qb_cap_pct", "rb
                                  "te_cap_pct", "ol_cap_pct", "lb_cap_pct", 
                                  "db_cap_pct", "dl_cap_pct", "s_cap_pct", 
                                  "spec_cap_pct")]), s = "lambda.min")
-pred_champ<-ifelse(predict.lasso>0.7,1,0)
+pred_champ<-ifelse(predict.lasso>0.9,1,0)
 confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
 ```
 ```{r}
@@ -358,18 +385,51 @@ pred<-predict(ridge.train,newx=pred_24_lasso, s = "lambda.min")
 order(pred, decreasing = TRUE)
 pred_24[order(pred, decreasing = TRUE),]
 ```
+Elastic Net
+```{r}
+library(glmnet)
+
+train_clean <- na.omit(train[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", 
+                                 "te_cap_pct", "ol_cap_pct", "lb_cap_pct", 
+                                 "db_cap_pct", "dl_cap_pct", "s_cap_pct", 
+                                 "spec_cap_pct", "is_champion")])
+
+x<-as.matrix(train_clean[,1:10])
+
+y<-train_clean$is_champion
+
+class_weights2 <- ifelse(train_clean$is_champion==1,
+                        1/sum(train_clean$is_champion==1,na.rm=TRUE),
+                        1/sum(train_clean$is_champion==0,na.rm=TRUE))
+ridge.train.net = cv.glmnet(x, y, family = "binomial",alpha = 0.5,weights = class_weights2)
+coefficient.ridge.net = coef(ridge.train.net, s = "lambda.min")
+coefficient.ridge.net
+predict.net <- predict(ridge.train.net, newx = as.matrix(test[,c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", 
+                                 "te_cap_pct", "ol_cap_pct", "lb_cap_pct", 
+                                 "db_cap_pct", "dl_cap_pct", "s_cap_pct", 
+                                 "spec_cap_pct")]), s = "lambda.min")
+pred_champ<-ifelse(predict.net>0.5,1,0)
+confusionMatrix(as.factor(pred_champ), as.factor(test$is_champion))
+```
+```{r}
+pred_24_net <- as.matrix(pred_24[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct")])
+pred<-predict(ridge.train.net,newx=pred_24_net, s = "lambda.min")
+order(pred, decreasing = TRUE)
+pred_24[order(pred, decreasing = TRUE),]
+```
+
 
 Random Forest
 ```{r}
 library(randomForest)
 
 rf_model <- randomForest(as.factor(is_champion) ~ qb_cap_pct + rb_cap_pct + wr_cap_pct + te_cap_pct + ol_cap_pct + lb_cap_pct + db_cap_pct + dl_cap_pct + s_cap_pct + spec_cap_pct ,
-                         data = full_train,
-                         classwt = c("0" = 1, "1" = 5),
+                         data = train,
+                         classwt = c("0" = 1, "1" = 10),
                          na.action=na.exclude)  
 
 pred_r<-predict(model_w,newdata=test,type="response")
-pred_champ_r<-ifelse(pred_r>0.8,1,0)
+pred_champ_r<-ifelse(pred_r>0.5,1,0)
 confusionMatrix(as.factor(pred_champ_r), as.factor(test$is_champion))
 
 ```
@@ -381,31 +441,158 @@ pred_24[order(pred, decreasing = TRUE),]
 
 xgboost
 ```{r}
+# Load the library
 library(xgboost)
 
-# Prepare data for xgboost
-x <- as.matrix(full_train[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")])
-y <- full_train$is_champion
+# Prepare data
+xgb_train <- xgb.DMatrix(data = as.matrix(x_train), label = as.matrix(y_train))
+xgb_test <- xgb.DMatrix(data = as.matrix(x_test), label = as.matrix(y_test))
 
-# Fit an XGBoost model with scale_pos_weight
-xgb_model <- xgboost(data = x, label = y, objective = "binary:logistic", scale_pos_weight = 5, nrounds = 100)
+# Watchlist to track training and test performance
+watchlist <- list(train = xgb_train, test = xgb_test)
+
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1, scale_pos_weight = 5)
+
+xgbcv <- xgb.cv(params = params, data = xgb_train, nrounds = 11, nfold = 5, showsd = T, stratified = T, early_stop_round = 20, maximize = F)
+min(xgbcv$evaluation_log$test_logloss_mean)
+```
+
+```{r}
+xgb1 <- xgb.train (params = params, data = xgb_train, nrounds = 11, watchlist = watchlist, print_every_n = 10, early_stop_round = 10, maximize = F , eval_metric = "error")
+
+predicted_probabilities <- predict(xgb1, xgb_test)
+xgbpred <- ifelse (predicted_probabilities > 0.5,1,0)
+
+table(Predicted = xgbpred, Actual = y_test$is_champion)
+
+```
+
+```{r}
+# Get feature importance
+importance <- xgb.importance(feature_names = colnames(x_train), model = xgb1)
+
+# Print importance
+print(importance)
+
+# Plot feature importance
+xgb.plot.importance(importance_matrix = importance)
+
 ```
 ```{r}
-test_x <- as.matrix(test[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")])
+y_ischamp <- factor(y_train$is_champion, levels = c(0, 1), labels = c("No", "Yes"))
+set.seed(1234)
+# Train with random search
+train_control <- trainControl(
+  method = "cv", number = 5,       # 5-fold cross-validation
+  verboseIter = TRUE,
+  classProbs = TRUE,
+  search = "random"                # Random search
+)
 
-pred_xg<-predict(xgb_model,newdata=test_x,type="response")
-pred_champ_xg<-ifelse(pred_xg>0.5,1,0)
-confusionMatrix(as.factor(pred_champ_xg), as.factor(test$is_champion))
+best_train <- train(
+  x = as.matrix(x_train),
+  y = y_ischamp,
+  method = "xgbTree",
+  trControl = train_control,
+  metric = "ROC",
+  tuneLength = 10                  # Number of random combinations to try
+)
+
+# View the best parameters
+best_train$bestTune
+
+```
+
+```{r}
+bparams <- as.list(best_train$bestTune)
+nrd <- bparams$nrounds
+bparams$nrounds <- NULL  # Remove nrounds from the parameter list
+
+# Add other parameters required for xgb.train
+bparams$objective <- "binary:logistic"  # Specify the objective
+bparams$scale_pos_weight <- sum(y_train$is_champion == 0) / sum(y_train$is_champion == 1)
+
+final_mod <-xgb.train (params = bparams, data = xgb_train, nrounds = nrd, watchlist = watchlist, print_every_n = 10, early_stop_round = 10, maximize = F , eval_metric = "error")
+```
+```{r}
+importance <- xgb.importance(feature_names = colnames(x_train), model = final_mod)
+
+# Print importance
+print(importance)
+
+# Plot feature importance
+xgb.plot.importance(importance_matrix = importance)
+```
+```{r}
+# Predict probabilities for the test set
+predicted_probabilities <- predict(final_mod, xgb_test)
+
+# Display the first few predicted probabilities
+head(predicted_probabilities)
+
+# Set a threshold (e.g., 0.5)
+threshold <- 0.7
+
+# Convert probabilities to binary class predictions
+predicted_labels <- ifelse(predicted_probabilities > threshold, 1, 0)
+
+# Display the first few predicted labels
+head(predicted_labels)
+# Confusion matrix
+table(Predicted = predicted_labels, Actual = y_test$is_champion)
+
+library(Metrics)
+
+# Calculate AUC
+auc_value <- auc(y_test$is_champion, predicted_probabilities)
+print(paste("AUC:", auc_value))
 ```
 
 Predicting the 2024 NFL Champion
 ```{r}
-pred_24_xgb <- as.matrix(pred_24[, c("qb_cap_pct", "rb_cap_pct", "wr_cap_pct", "lb_cap_pct", "db_cap_pct","te_cap_pct","ol_cap_pct","dl_cap_pct","s_cap_pct","spec_cap_pct","total_cap_pct")])
-pred<-predict(xgb_model,newdata=pred_24_xgb,type="response")
-order(pred, decreasing = TRUE)
-pred_24[order(pred, decreasing = TRUE),]
+xgb_24_test <- xgb.DMatrix(data = as.matrix(pred_24[,3:13]))
+pred24 <- predict(final_mod, xgb_24_test)
+champ_xg<-pred_24[order(pred24, decreasing = TRUE),]
+pred_24[which(pred24>threshold),]
 ```
 
+Current championship odds rankings 2024:
+```{r}
+champ_odds <- data.frame(
+  team = c("DET","KC","BUF","PHI","BAL","GB","MIN","PIT","HOU","LAC","SEA","WAS","TB","DEN","ATL","ARI","LV","SF","MIA","IND","CIN","NO","CAR","DAL","CHI","CLV","TEN","JAX","NYJ","LA","NYG","NE"),
+  rank = 1:32
+)
+champ_log$log_rank <- 1:32
+champ_w$wlog_rank <- 1:32
+champ_xg$xg_rank <- 1:32
 
+dif_log<-merge(champ_log[,c(2,16)],champ_odds,by="team")
+dif_wlog<-merge(champ_w[,c(2,16)],champ_odds,by="team")
+dif_xg<-merge(champ_xg[,c(2,16)],champ_odds,by="team")
 
+dif_log$diff_log <- dif_log$log_rank-dif_log$rank
+dif_wlog$diff_wlog <- dif_wlog$wlog_rank-dif_wlog$rank
+dif_xg$diff_xg <- dif_xg$xg_rank-dif_xg$rank
 
+dif_log
+dif_wlog
+dif_xg
+
+mod_champ<-merge(dif_log[,c(1,2,4)],dif_wlog[,c(1,2,4)],by="team")|>
+  merge(x=_,dif_xg[c(1,2,4,3)], by ="team")
+
+mod_champ[order(mod_champ$rank,decreasing=FALSE),c(1,8,2,4,6,3,5,7)]
+
+mean_diffs <- data.frame(
+  model = c("Logisitic","Weighted Logisitc","XGBoost"),
+  mean_diff = c(mean(abs(mod_champ$log_rank-mod_champ$rank)),mean(abs(mod_champ$wlog_rank-mod_champ$rank)),mean(abs(mod_champ$xg_rank-mod_champ$rank)))
+)
+
+mean_diffs
+```
+```{r}
+data.frame(
+  team = c("KC","MIN","KC"),
+  model = c("Logisitic","Weighted Logisitc","XGBoost")
+)
+```
